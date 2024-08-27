@@ -1,4 +1,4 @@
-cd C:\Users\caiop\OneDrive\Documentos\app-transcricao
+cd [FOLDER_PATH]
 call .\env\Scripts\activate
 python main.py
 pause
