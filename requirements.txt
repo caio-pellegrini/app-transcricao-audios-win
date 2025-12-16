@@ -4,3 +4,4 @@ pydub
 python-dotenv
 pyinstaller
 customtkinter
+python-docx

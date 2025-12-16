@@ -3,6 +3,7 @@ from tkinter import filedialog
 import ctypes
 import os
 import threading
+from docx import Document
 from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, CTkComboBox, CTkCheckBox, set_appearance_mode, set_default_color_theme
 
 try:
@@ -192,6 +193,18 @@ class TranscriptionApp:
             hover_color="#1e3f6f"
         )
         self.copy_button.pack(side="left", padx=5, fill="x", expand=True)
+
+        self.save_button = CTkButton(
+            self.action_frame,
+            text="💾 Salvar como Word",
+            command=self.save_transcription_to_word,
+            font=("Arial", 12),
+            height=35,
+            corner_radius=8,
+            fg_color="#2d7a4d",
+            hover_color="#1f5634"
+        )
+        self.save_button.pack(side="left", padx=5, fill="x", expand=True)
 
         self.clear_button = CTkButton(
             self.action_frame,
@@ -389,6 +402,58 @@ class TranscriptionApp:
         )
         # Limpa a mensagem após 3 segundos
         self.root.after(3000, lambda: self.status_label.configure(text=""))
+
+    def save_transcription_to_word(self):
+        """Salva a transcrição em um arquivo .docx"""
+        text = self.text_area.get("1.0", tk.END).strip()
+        if not text:
+            self.status_label.configure(
+                text="⚠️ Nenhuma transcrição para salvar",
+                text_color="orange"
+            )
+            return
+        
+        # Abre diálogo para escolher onde salvar
+        filepath = filedialog.asksaveasfilename(
+            title="Salvar transcrição como Word",
+            defaultextension=".docx",
+            filetypes=[
+                ("Documento Word", "*.docx"),
+                ("Todos os arquivos", "*.*")
+            ]
+        )
+        
+        if not filepath:
+            return  # Usuário cancelou
+        
+        try:
+            # Cria um novo documento Word
+            doc = Document()
+            
+            # Adiciona o texto da transcrição
+            # Se houver quebras de linha, preserva usando parágrafos
+            paragraphs = text.split('\n')
+            for para_text in paragraphs:
+                if para_text.strip():  # Ignora linhas vazias
+                    doc.add_paragraph(para_text)
+                else:
+                    doc.add_paragraph()  # Adiciona parágrafo vazio para espaçamento
+            
+            # Salva o documento
+            doc.save(filepath)
+            
+            self.status_label.configure(
+                text=f"✅ Transcrição salva em: {os.path.basename(filepath)}",
+                text_color="green"
+            )
+            # Limpa a mensagem após 5 segundos
+            self.root.after(5000, lambda: self.status_label.configure(text=""))
+            
+        except Exception as e:
+            self.status_label.configure(
+                text=f"❌ Erro ao salvar arquivo: {str(e)}",
+                text_color="red"
+            )
 
     def clear_text(self):
         self.text_area.delete("1.0", tk.END)
