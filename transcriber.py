@@ -1,7 +1,30 @@
 import os
 import tempfile
+import subprocess
+import sys
 from pydub import AudioSegment
 from whisper_api import WhisperAPI
+
+# Configura o subprocess para suprimir janelas de terminal no Windows
+if sys.platform == "win32":
+    # Salva a função original do Popen
+    _original_popen = subprocess.Popen
+    
+    # Cria uma versão silenciosa do Popen para Windows
+    def _silent_popen(*args, **kwargs):
+        """Wrapper do subprocess.Popen que suprime janelas de terminal no Windows"""
+        # Redireciona stdout e stderr para DEVNULL
+        kwargs.setdefault('stdout', subprocess.DEVNULL)
+        kwargs.setdefault('stderr', subprocess.DEVNULL)
+        
+        # Configura para não mostrar janela de terminal
+        if 'creationflags' not in kwargs:
+            kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
+        
+        return _original_popen(*args, **kwargs)
+    
+    # Aplica o monkey patch globalmente
+    subprocess.Popen = _silent_popen
 
 class Transcriber:
     def __init__(self):
@@ -25,7 +48,7 @@ class Transcriber:
         temp_files = []
         
         try:
-            # Carrega o áudio
+            # Carrega o áudio (a saída do ffmpeg já está suprimida pelo monkey patch)
             audio = AudioSegment.from_file(filepath)
             duration_ms = len(audio)
             
