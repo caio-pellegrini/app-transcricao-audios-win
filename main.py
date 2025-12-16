@@ -1,6 +1,9 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 import ctypes
+import os
+import threading
+from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, set_appearance_mode, set_default_color_theme
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -13,86 +16,309 @@ class TranscriptionApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Transcritor de Áudio")
+        self.root.geometry("900x700")
+        
+        # Configura tema moderno
+        set_appearance_mode("dark")
+        set_default_color_theme("blue")
         
         self.transcriber = Transcriber()
-
         self.filepath = ""
+        self.is_processing = False
 
-        # Frame para alinhar os elementos na mesma linha com padding ajustado
-        self.button_frame = tk.Frame(root)
-        self.button_frame.pack(pady=20)  # Aumente o valor de pady aqui para mais espaço
+        # Container principal
+        self.main_frame = CTkFrame(root)
+        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Elementos da UI dentro do frame
-        self.import_button = tk.Button(self.button_frame, text="Importar Arquivo", command=self.import_file, font=("Helvetica", 10))
-        self.import_button.pack(side="left", padx=5)
+        # Cabeçalho
+        self.header_frame = CTkFrame(self.main_frame)
+        self.header_frame.pack(fill="x", pady=(0, 20))
 
-        self.transcribe_button = tk.Button(self.button_frame, text="Iniciar Transcrição", command=self.start_transcription, font=("Helvetica", 10))
-        self.transcribe_button.pack(side="left", padx=5)
+        self.title_label = CTkLabel(
+            self.header_frame, 
+            text="🎤 Transcritor de Áudio", 
+            font=("Arial", 24, "bold")
+        )
+        self.title_label.pack(pady=10)
 
-        self.loading_label = tk.Label(root, text="", font=("Helvetica", 10))
-        self.loading_label.pack()  # Ajuste o padding vertical conforme necessário
+        # Área de informações do arquivo
+        self.file_info_frame = CTkFrame(self.main_frame)
+        self.file_info_frame.pack(fill="x", pady=(0, 15))
 
-        # Adiciona margens à área de texto
-        self.text_frame = tk.Frame(root, padx=20, pady=10)
-        self.text_frame.pack(pady=10, fill="both", expand=True)
+        self.file_label = CTkLabel(
+            self.file_info_frame, 
+            text="📁 Nenhum arquivo selecionado",
+            font=("Arial", 12),
+            anchor="w"
+        )
+        self.file_label.pack(fill="x", padx=15, pady=10)
 
-        # Configura a área de texto
-        self.text_area = tk.Text(self.text_frame, height=20, width=60, font=("Helvetica", 11), wrap="word", padx=10, pady=10)
-        self.text_area.pack(fill="both", expand=True)
+        self.file_size_label = CTkLabel(
+            self.file_info_frame,
+            text="",
+            font=("Arial", 10),
+            text_color="gray",
+            anchor="w"
+        )
+        self.file_size_label.pack(fill="x", padx=15, pady=(0, 10))
 
-        # Adiciona botão de copiar
-        self.copy_button = tk.Button(root, text="Copiar Transcrição", command=self.copy_transcription, font=("Helvetica", 10))
-        self.copy_button.pack(pady=10)
+        # Frame de botões
+        self.button_frame = CTkFrame(self.main_frame)
+        self.button_frame.pack(fill="x", pady=(0, 15))
 
-        # Adiciona botão de resetar
-        self.reset_button = tk.Button(root, text="Resetar", command=self.reset, font=("Helvetica", 10))
-        self.reset_button.pack(pady=10)
+        self.import_button = CTkButton(
+            self.button_frame,
+            text="📂 Selecionar Arquivo",
+            command=self.import_file,
+            font=("Arial", 14),
+            height=40,
+            corner_radius=10
+        )
+        self.import_button.pack(side="left", padx=5, fill="x", expand=True)
+
+        self.transcribe_button = CTkButton(
+            self.button_frame,
+            text="▶️ Iniciar Transcrição",
+            command=self.start_transcription,
+            font=("Arial", 14, "bold"),
+            height=40,
+            corner_radius=10,
+            fg_color="#1f8a4f",
+            hover_color="#166d3d"
+        )
+        self.transcribe_button.pack(side="left", padx=5, fill="x", expand=True)
+
+        # Área de status e progresso
+        self.status_frame = CTkFrame(self.main_frame)
+        self.status_frame.pack(fill="x", pady=(0, 15))
+
+        self.status_label = CTkLabel(
+            self.status_frame,
+            text="",
+            font=("Arial", 12),
+            anchor="w"
+        )
+        self.status_label.pack(fill="x", padx=15, pady=(10, 5))
+
+        self.progress_bar = CTkProgressBar(self.status_frame)
+        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        self.progress_bar.set(0)
+        self.progress_bar.pack_forget()  # Esconde inicialmente
+
+        # Área de transcrição
+        self.text_frame = CTkFrame(self.main_frame)
+        self.text_frame.pack(fill="both", expand=True, pady=(0, 15))
+
+        self.text_label = CTkLabel(
+            self.text_frame,
+            text="📝 Transcrição:",
+            font=("Arial", 14, "bold"),
+            anchor="w"
+        )
+        self.text_label.pack(fill="x", padx=15, pady=(10, 5))
+
+        self.text_area = CTkTextbox(
+            self.text_frame,
+            font=("Arial", 12),
+            wrap="word",
+            corner_radius=10
+        )
+        self.text_area.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+        # Frame de ações
+        self.action_frame = CTkFrame(self.main_frame)
+        self.action_frame.pack(fill="x")
+
+        self.copy_button = CTkButton(
+            self.action_frame,
+            text="📋 Copiar",
+            command=self.copy_transcription,
+            font=("Arial", 12),
+            height=35,
+            corner_radius=8,
+            fg_color="#2b5aa0",
+            hover_color="#1e3f6f"
+        )
+        self.copy_button.pack(side="left", padx=5, fill="x", expand=True)
+
+        self.clear_button = CTkButton(
+            self.action_frame,
+            text="🗑️ Limpar",
+            command=self.clear_text,
+            font=("Arial", 12),
+            height=35,
+            corner_radius=8,
+            fg_color="#8b2a2a",
+            hover_color="#6b1f1f"
+        )
+        self.clear_button.pack(side="left", padx=5, fill="x", expand=True)
+
+        self.reset_button = CTkButton(
+            self.action_frame,
+            text="🔄 Novo Arquivo",
+            command=self.reset,
+            font=("Arial", 12),
+            height=35,
+            corner_radius=8
+        )
+        self.reset_button.pack(side="left", padx=5, fill="x", expand=True)
+
+    def format_file_size(self, size_bytes):
+        """Formata o tamanho do arquivo em formato legível"""
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size_bytes < 1024.0:
+                return f"{size_bytes:.2f} {unit}"
+            size_bytes /= 1024.0
+        return f"{size_bytes:.2f} TB"
 
     def import_file(self):
+        if self.is_processing:
+            return
+        
         self.filepath = filedialog.askopenfilename(
-            filetypes=[("Arquivos de Áudio", "*.mp3 *.mp4 *.mpeg *.mpga *.m4a *.wav *.webm")]
+            title="Selecione um arquivo de áudio",
+            filetypes=[
+                ("Arquivos de Áudio", "*.mp3 *.mp4 *.mpeg *.mpga *.m4a *.wav *.webm"),
+                ("Todos os arquivos", "*.*")
+            ]
         )
+        
         if self.filepath:
-            messagebox.showinfo("Arquivo Selecionado", f"Arquivo selecionado: {self.filepath}")
+            filename = os.path.basename(self.filepath)
+            file_size = os.path.getsize(self.filepath)
+            file_size_str = self.format_file_size(file_size)
+            
+            self.file_label.configure(text=f"📁 {filename}")
+            self.file_size_label.configure(text=f"Tamanho: {file_size_str}")
+            
+            # Limpa a transcrição anterior
+            self.text_area.delete("1.0", tk.END)
+            self.status_label.configure(text="")
+
+    def update_progress(self, value):
+        """Atualiza a barra de progresso"""
+        self.progress_bar.set(value)
+        self.root.update_idletasks()
+
+    def animate_progress(self):
+        """Anima a barra de progresso enquanto processa"""
+        import time
+        value = 0
+        direction = 1
+        while self.is_processing:
+            value += direction * 0.02
+            if value >= 0.9:
+                direction = -1
+            elif value <= 0.1:
+                direction = 1
+            self.progress_bar.set(value)
+            self.root.update_idletasks()
+            time.sleep(0.1)
 
     def start_transcription(self):
+        if self.is_processing:
+            return
+            
         if not self.filepath:
-            messagebox.showwarning("Nenhum Arquivo", "Por favor, importe um arquivo de áudio primeiro.")
+            self.status_label.configure(
+                text="⚠️ Por favor, selecione um arquivo primeiro",
+                text_color="orange"
+            )
             return
 
+        # Prepara a UI para processamento
+        self.is_processing = True
+        self.transcribe_button.configure(state="disabled", text="⏳ Processando...")
+        self.import_button.configure(state="disabled")
+        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        
         # Verifica o tamanho do arquivo
-        import os
         file_size = os.path.getsize(self.filepath)
         max_size = 25 * 1024 * 1024  # 25MB
         
         if file_size > max_size:
-            self.loading_label.config(text="Arquivo grande detectado. Dividindo e transcrevendo em partes...")
+            self.status_label.configure(
+                text="🔄 Arquivo grande detectado. Dividindo e transcrevendo em partes...",
+                text_color="yellow"
+            )
         else:
-            self.loading_label.config(text="Transcrevendo...")
+            self.status_label.configure(
+                text="🔄 Transcrevendo áudio...",
+                text_color="cyan"
+            )
         
-        self.root.update_idletasks()
+        # Inicia animação de progresso em thread separada
+        progress_thread = threading.Thread(target=self.animate_progress, daemon=True)
+        progress_thread.start()
+        
+        # Executa transcrição em thread separada para não travar a UI
+        transcription_thread = threading.Thread(target=self._transcribe_async, daemon=True)
+        transcription_thread.start()
 
+    def _transcribe_async(self):
+        """Executa a transcrição em thread separada"""
         try:
             transcription = self.transcriber.transcribe_audio(self.filepath)
-            self.loading_label.config(text="")
-            self.text_area.delete("1.0", tk.END)  # Limpa o conteúdo anterior
-            self.text_area.insert(tk.END, transcription)
-            messagebox.showinfo("Sucesso", "Transcrição concluída com sucesso!")
+            
+            # Atualiza UI na thread principal
+            self.root.after(0, self._transcription_complete, transcription, None)
         except Exception as e:
-            self.loading_label.config(text="")
-            messagebox.showerror("Erro", f"Erro ao transcrever: {str(e)}")
+            self.root.after(0, self._transcription_complete, None, str(e))
+
+    def _transcription_complete(self, transcription, error):
+        """Callback chamado quando a transcrição termina"""
+        self.is_processing = False
+        self.progress_bar.pack_forget()
+        self.transcribe_button.configure(state="normal", text="▶️ Iniciar Transcrição")
+        self.import_button.configure(state="normal")
+        
+        if error:
+            self.status_label.configure(
+                text=f"❌ Erro: {error}",
+                text_color="red"
+            )
+        else:
+            self.text_area.delete("1.0", tk.END)
+            self.text_area.insert("1.0", transcription)
+            self.status_label.configure(
+                text="✅ Transcrição concluída com sucesso!",
+                text_color="green"
+            )
 
     def copy_transcription(self):
+        text = self.text_area.get("1.0", tk.END).strip()
+        if not text:
+            self.status_label.configure(
+                text="⚠️ Nenhuma transcrição para copiar",
+                text_color="orange"
+            )
+            return
+        
         self.root.clipboard_clear()
-        self.root.clipboard_append(self.text_area.get("1.0", tk.END))
-        messagebox.showinfo("Copiado", "Transcrição copiada para a área de transferência.")
+        self.root.clipboard_append(text)
+        self.status_label.configure(
+            text="📋 Transcrição copiada para a área de transferência!",
+            text_color="green"
+        )
+        # Limpa a mensagem após 3 segundos
+        self.root.after(3000, lambda: self.status_label.configure(text=""))
+
+    def clear_text(self):
+        self.text_area.delete("1.0", tk.END)
+        self.status_label.configure(text="🗑️ Texto limpo")
 
     def reset(self):
+        if self.is_processing:
+            return
+            
         self.filepath = ""
+        self.file_label.configure(text="📁 Nenhum arquivo selecionado")
+        self.file_size_label.configure(text="")
         self.text_area.delete("1.0", tk.END)
-        self.loading_label.config(text="")
+        self.status_label.configure(text="")
+        self.progress_bar.pack_forget()
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = CTk()
     app = TranscriptionApp(root)
     root.mainloop()
