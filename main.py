@@ -3,7 +3,7 @@ from tkinter import filedialog
 import ctypes
 import os
 import threading
-from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, set_appearance_mode, set_default_color_theme
+from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, CTkComboBox, CTkCheckBox, set_appearance_mode, set_default_color_theme
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
@@ -11,6 +11,7 @@ except Exception:
     pass
 
 from transcriber import Transcriber
+from whisper_api import WhisperAPI
 
 class TranscriptionApp:
     def __init__(self, root):
@@ -23,8 +24,11 @@ class TranscriptionApp:
         set_default_color_theme("blue")
         
         self.transcriber = Transcriber()
+        self.api = WhisperAPI()  # Para acessar informações de custo
         self.filepath = ""
         self.is_processing = False
+        self.selected_model = "gpt-4o-mini-transcribe"  # Modelo padrão (mais barato)
+        self.use_diarization = False
 
         # Container principal
         self.main_frame = CTkFrame(root)
@@ -61,6 +65,54 @@ class TranscriptionApp:
             anchor="w"
         )
         self.file_size_label.pack(fill="x", padx=15, pady=(0, 10))
+
+        # Frame de configurações (modelo e diarização)
+        self.settings_frame = CTkFrame(self.main_frame)
+        self.settings_frame.pack(fill="x", pady=(0, 15))
+
+        # Label e ComboBox para seleção de modelo
+        self.model_label = CTkLabel(
+            self.settings_frame,
+            text="Modelo:",
+            font=("Arial", 12),
+            anchor="w"
+        )
+        self.model_label.pack(side="left", padx=(15, 5), pady=10)
+
+        self.model_combo = CTkComboBox(
+            self.settings_frame,
+            values=[
+                "gpt-4o-mini-transcribe",
+                "gpt-4o-transcribe",
+                "gpt-4o-transcribe-diarize",
+                "whisper-1"
+            ],
+            command=self._on_model_change,
+            font=("Arial", 11),
+            width=200
+        )
+        self.model_combo.set("gpt-4o-mini-transcribe")
+        self.model_combo.pack(side="left", padx=5, pady=10)
+
+        # Label para mostrar o custo do modelo
+        self.cost_label = CTkLabel(
+            self.settings_frame,
+            text="",
+            font=("Arial", 10),
+            text_color="gray",
+            anchor="w"
+        )
+        self.cost_label.pack(side="left", padx=(10, 0), pady=10)
+        self._update_cost_label()  # Atualiza com o custo inicial
+
+        # Checkbox para diarização
+        self.diarization_checkbox = CTkCheckBox(
+            self.settings_frame,
+            text="Usar Diarização (identificar falantes)",
+            command=self._on_diarization_change,
+            font=("Arial", 11)
+        )
+        self.diarization_checkbox.pack(side="left", padx=(20, 15), pady=10)
 
         # Frame de botões
         self.button_frame = CTkFrame(self.main_frame)
@@ -255,10 +307,45 @@ class TranscriptionApp:
         transcription_thread = threading.Thread(target=self._transcribe_async, daemon=True)
         transcription_thread.start()
 
+    def _update_cost_label(self):
+        """Atualiza o label com o custo do modelo selecionado"""
+        cost = self.api.get_model_cost(self.selected_model)
+        cost_text = f"Custo: ${cost:.3f} / minuto"
+        self.cost_label.configure(text=cost_text)
+
+    def _on_model_change(self, value):
+        """Callback quando o modelo é alterado"""
+        self.selected_model = value
+        # Atualiza o label de custo
+        self._update_cost_label()
+        # Se o modelo selecionado é o de diarização, ativa o checkbox automaticamente
+        if value == "gpt-4o-transcribe-diarize":
+            self.diarization_checkbox.select()
+            self.diarization_checkbox.configure(state="disabled")
+            self.use_diarization = True
+        else:
+            # Se mudou para outro modelo, habilita o checkbox e atualiza use_diarization baseado no estado
+            self.diarization_checkbox.configure(state="normal")
+            self.use_diarization = self.diarization_checkbox.get()
+    
+    def _on_diarization_change(self):
+        """Callback quando a opção de diarização é alterada"""
+        self.use_diarization = self.diarization_checkbox.get()
+        # Se diarização foi ativada, sugere o modelo apropriado
+        if self.use_diarization and self.selected_model != "gpt-4o-transcribe-diarize":
+            # Atualiza o combo para o modelo de diarização
+            self.model_combo.set("gpt-4o-transcribe-diarize")
+            self.selected_model = "gpt-4o-transcribe-diarize"
+            self._update_cost_label()  # Atualiza o custo quando muda o modelo
+
     def _transcribe_async(self):
         """Executa a transcrição em thread separada"""
         try:
-            transcription = self.transcriber.transcribe_audio(self.filepath)
+            transcription = self.transcriber.transcribe_audio(
+                self.filepath,
+                model=self.selected_model,
+                use_diarization=self.use_diarization
+            )
             
             # Atualiza UI na thread principal
             self.root.after(0, self._transcription_complete, transcription, None)
@@ -317,6 +404,12 @@ class TranscriptionApp:
         self.text_area.delete("1.0", tk.END)
         self.status_label.configure(text="")
         self.progress_bar.pack_forget()
+        # Reseta modelo para padrão
+        self.selected_model = "gpt-4o-mini-transcribe"
+        self.model_combo.set("gpt-4o-mini-transcribe")
+        self.use_diarization = False
+        self.diarization_checkbox.deselect()
+        self.diarization_checkbox.configure(state="normal")
 
 if __name__ == "__main__":
     root = CTk()

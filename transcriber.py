@@ -27,23 +27,37 @@ if sys.platform == "win32":
     subprocess.Popen = _silent_popen
 
 class Transcriber:
-    def __init__(self):
+    def __init__(self, model="gpt-4o-mini-transcribe", use_diarization=False):
         self.api = WhisperAPI()
+        self.model = model
+        self.use_diarization = use_diarization
         self.MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB em bytes
         self.CHUNK_SIZE = 24 * 1024 * 1024  # 24MB por chunk (margem de segurança)
 
-    def transcribe_audio(self, filepath):
+    def transcribe_audio(self, filepath, model=None, use_diarization=None):
+        """
+        Transcreve um arquivo de áudio
+        
+        Args:
+            filepath: Caminho para o arquivo de áudio
+            model: Modelo a ser usado (usa self.model se None)
+            use_diarization: Se True, usa diarização (usa self.use_diarization se None)
+        """
+        # Usa parâmetros fornecidos ou os padrões da instância
+        model = model if model is not None else self.model
+        use_diarization = use_diarization if use_diarization is not None else self.use_diarization
+        
         file_size = self.api.get_file_size(filepath)
         
         # Se o arquivo for menor que 25MB, processa normalmente
         if file_size <= self.MAX_FILE_SIZE:
-            return self.api.transcribe(filepath)
+            return self.api.transcribe(filepath, model=model, use_diarization=use_diarization)
         
         # Se for maior, divide e processa em partes
-        return self._transcribe_large_file(filepath)
+        return self._transcribe_large_file(filepath, model, use_diarization)
     
-    def _transcribe_large_file(self, filepath):
-        """Divide um arquivo grande em partes menores e transcreve cada uma"""
+    def _transcribe_large_file(self, filepath, model, use_diarization):
+        """Divide um arquivo grande em partes menores e transcreve cada uma independentemente"""
         transcriptions = []
         temp_files = []
         
@@ -62,7 +76,7 @@ class Transcriber:
             min_chunk_duration = min(60000, duration_ms // 10)
             chunk_duration_ms = max(chunk_duration_ms, min_chunk_duration)
             
-            # Processa o áudio em chunks
+            # Processa o áudio em chunks (cada um transcrito independentemente)
             start_ms = 0
             chunk_number = 1
             
@@ -98,8 +112,13 @@ class Transcriber:
                         chunk.export(temp_path, format="mp3", bitrate="64k")
                         chunk_size = os.path.getsize(temp_path)
                     
-                    # Transcreve o chunk
-                    transcription = self.api.transcribe(temp_path)
+                    # Transcreve o chunk independentemente (sem contexto de chunks anteriores)
+                    transcription = self.api.transcribe(
+                        temp_path, 
+                        model=model, 
+                        use_diarization=use_diarization
+                    )
+                    
                     if transcription and transcription.strip():
                         transcriptions.append(transcription.strip())
                     
