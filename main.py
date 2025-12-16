@@ -4,6 +4,7 @@ import ctypes
 import os
 import threading
 from docx import Document
+from pydub import AudioSegment
 from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, CTkComboBox, CTkCheckBox, set_appearance_mode, set_default_color_theme
 
 try:
@@ -65,7 +66,16 @@ class TranscriptionApp:
             text_color="gray",
             anchor="w"
         )
-        self.file_size_label.pack(fill="x", padx=15, pady=(0, 10))
+        self.file_size_label.pack(fill="x", padx=15, pady=(0, 5))
+
+        self.estimated_cost_label = CTkLabel(
+            self.file_info_frame,
+            text="",
+            font=("Arial", 10),
+            text_color="#4CAF50",
+            anchor="w"
+        )
+        self.estimated_cost_label.pack(fill="x", padx=15, pady=(0, 10))
 
         # Frame de configurações (modelo e diarização)
         self.settings_frame = CTkFrame(self.main_frame)
@@ -235,6 +245,63 @@ class TranscriptionApp:
                 return f"{size_bytes:.2f} {unit}"
             size_bytes /= 1024.0
         return f"{size_bytes:.2f} TB"
+    
+    def get_audio_duration(self, filepath):
+        """Obtém a duração do arquivo de áudio em minutos"""
+        try:
+            audio = AudioSegment.from_file(filepath)
+            duration_seconds = len(audio) / 1000.0  # pydub retorna em milissegundos
+            duration_minutes = duration_seconds / 60.0
+            return duration_minutes
+        except Exception as e:
+            print(f"Erro ao obter duração do áudio: {str(e)}")
+            return None
+    
+    def calculate_estimated_cost(self, duration_minutes, model):
+        """Calcula o custo estimado da transcrição"""
+        if duration_minutes is None:
+            return None
+        cost_per_minute = self.api.get_model_cost(model)
+        # O custo mínimo é sempre de 1 minuto, mesmo que o áudio seja menor
+        effective_minutes = max(duration_minutes, 1.0)
+        estimated_cost = effective_minutes * cost_per_minute
+        return estimated_cost
+    
+    def update_estimated_cost_label(self):
+        """Atualiza o label com o custo estimado"""
+        if not self.filepath:
+            self.estimated_cost_label.configure(text="")
+            return
+        
+        duration_minutes = self.get_audio_duration(self.filepath)
+        if duration_minutes is None:
+            self.estimated_cost_label.configure(
+                text="⚠️ Não foi possível calcular a duração do áudio",
+                text_color="orange"
+            )
+            return
+        
+        estimated_cost = self.calculate_estimated_cost(duration_minutes, self.selected_model)
+        if estimated_cost is None:
+            self.estimated_cost_label.configure(text="")
+            return
+        
+        # Formata a duração
+        if duration_minutes < 1:
+            duration_str = f"{duration_minutes * 60:.1f} segundos"
+        else:
+            duration_str = f"{duration_minutes:.2f} minutos"
+        
+        # Formata o custo: 2 casas decimais normalmente, mais casas apenas se < 0.01
+        if estimated_cost < 0.01:
+            cost_str = f"${estimated_cost:.3f}"
+        else:
+            cost_str = f"${estimated_cost:.2f}"
+        
+        self.estimated_cost_label.configure(
+            text=f"💰 Custo estimado: {cost_str} ({duration_str})",
+            text_color="#4CAF50"
+        )
 
     def import_file(self):
         if self.is_processing:
@@ -255,6 +322,9 @@ class TranscriptionApp:
             
             self.file_label.configure(text=f"📁 {filename}")
             self.file_size_label.configure(text=f"Tamanho: {file_size_str}")
+            
+            # Atualiza o custo estimado
+            self.update_estimated_cost_label()
             
             # Limpa a transcrição anterior
             self.text_area.delete("1.0", tk.END)
@@ -325,6 +395,9 @@ class TranscriptionApp:
         cost = self.api.get_model_cost(self.selected_model)
         cost_text = f"Custo: ${cost:.3f} / minuto"
         self.cost_label.configure(text=cost_text)
+        # Atualiza também o custo estimado se houver arquivo selecionado
+        if self.filepath:
+            self.update_estimated_cost_label()
 
     def _on_model_change(self, value):
         """Callback quando o modelo é alterado"""
@@ -466,6 +539,7 @@ class TranscriptionApp:
         self.filepath = ""
         self.file_label.configure(text="📁 Nenhum arquivo selecionado")
         self.file_size_label.configure(text="")
+        self.estimated_cost_label.configure(text="")
         self.text_area.delete("1.0", tk.END)
         self.status_label.configure(text="")
         self.progress_bar.pack_forget()
