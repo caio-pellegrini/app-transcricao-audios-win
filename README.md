@@ -83,6 +83,57 @@ Este é um projeto de transcrição de áudio que utiliza a API Whisper da OpenA
 
 5. **Resete a aplicação** para limpar os campos e começar novamente clicando no botão "Resetar".
 
+## Build do Executável
+
+Para gerar um executável (.exe) da aplicação, você pode usar o PyInstaller.
+
+### Pré-requisitos para Build
+
+- Todas as dependências instaladas (veja seção [Instalação](#instalação))
+- PyInstaller instalado (já incluído no `requirements.txt`)
+
+### Gerando o Executável
+
+#### Opção 1: Usando o script de build (Windows)
+
+Execute o script `build.bat`:
+
+```bash
+.\build.bat
+```
+
+#### Opção 2: Usando o arquivo .spec (Recomendado)
+
+```bash
+# Ative o ambiente virtual primeiro
+.\env\Scripts\activate  # Windows
+# ou
+source env/bin/activate  # Linux/macOS
+
+# Gere o executável
+pyinstaller AppTranscricao.spec
+```
+
+#### Opção 3: Linha de comando direta
+
+```bash
+# Ative o ambiente virtual
+.\env\Scripts\activate  # Windows
+
+# Gere o executável
+pyinstaller --name=AppTranscricao --onefile --windowed --icon=icon.ico main.py
+```
+
+### Resultado
+
+O executável será gerado na pasta `dist\AppTranscricao.exe` (Windows) ou `dist/AppTranscricao` (Linux/macOS).
+
+### Notas Importantes
+
+- **Não mova o ambiente virtual**: Se você mover o projeto para outra pasta, será necessário recriar o ambiente virtual (`python -m venv env`).
+- **Tamanho do executável**: O executável pode ser grande (50-100MB+) pois inclui todas as dependências do Python.
+- **Distribuição**: Ao distribuir o executável, certifique-se de que os usuários tenham o `ffmpeg` instalado se forem processar arquivos de áudio em formatos específicos.
+
 ## Contribuição
 
 Contribuições são bem-vindas! Sinta-se à vontade para abrir uma issue ou enviar um pull request.

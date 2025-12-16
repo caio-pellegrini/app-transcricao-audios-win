@@ -2,3 +2,4 @@ requests
 openai
 pydub
 python-dotenv
+pyinstaller

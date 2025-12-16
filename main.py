@@ -60,16 +60,27 @@ class TranscriptionApp:
             messagebox.showwarning("Nenhum Arquivo", "Por favor, importe um arquivo de áudio primeiro.")
             return
 
-        self.loading_label.config(text="Transcrevendo...")
+        # Verifica o tamanho do arquivo
+        import os
+        file_size = os.path.getsize(self.filepath)
+        max_size = 25 * 1024 * 1024  # 25MB
+        
+        if file_size > max_size:
+            self.loading_label.config(text="Arquivo grande detectado. Dividindo e transcrevendo em partes...")
+        else:
+            self.loading_label.config(text="Transcrevendo...")
+        
         self.root.update_idletasks()
 
         try:
             transcription = self.transcriber.transcribe_audio(self.filepath)
             self.loading_label.config(text="")
+            self.text_area.delete("1.0", tk.END)  # Limpa o conteúdo anterior
             self.text_area.insert(tk.END, transcription)
+            messagebox.showinfo("Sucesso", "Transcrição concluída com sucesso!")
         except Exception as e:
             self.loading_label.config(text="")
-            messagebox.showerror("Erro", str(e))
+            messagebox.showerror("Erro", f"Erro ao transcrever: {str(e)}")
 
     def copy_transcription(self):
         self.root.clipboard_clear()
