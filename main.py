@@ -3,6 +3,7 @@ from tkinter import filedialog
 import ctypes
 import os
 import threading
+import datetime
 from docx import Document
 from pydub import AudioSegment
 from customtkinter import CTk, CTkFrame, CTkButton, CTkLabel, CTkTextbox, CTkProgressBar, CTkComboBox, CTkCheckBox, set_appearance_mode, set_default_color_theme
@@ -37,6 +38,9 @@ class TranscriptionApp:
         self.is_processing = False
         self.selected_model = "whisper-1"  # Modelo padrão
         self.use_diarization = False
+        self.progress_timer_id = None  # ID do temporizador de progresso
+        self.progress_start_time = None  # Tempo de início da transcrição
+        self.estimated_total_seconds = None  # Tempo total estimado em segundos
 
         # Container principal - usa grid para permitir proporções exatas
         self.main_frame = CTkFrame(root)
@@ -432,20 +436,26 @@ class TranscriptionApp:
         self.progress_bar.set(value)
         self.root.update_idletasks()
 
-    def animate_progress(self):
-        """Anima a barra de progresso enquanto processa"""
-        import time
-        value = 0
-        direction = 1
-        while self.is_processing:
-            value += direction * 0.02
-            if value >= 0.9:
-                direction = -1
-            elif value <= 0.1:
-                direction = 1
-            self.progress_bar.set(value)
-            self.root.update_idletasks()
-            time.sleep(0.1)
+    def _update_progress_by_time(self):
+        """Atualiza a barra de progresso baseada no tempo decorrido"""
+        if not self.is_processing or self.progress_start_time is None:
+            return
+        
+        # Calcula o tempo decorrido
+        elapsed_seconds = (datetime.datetime.now() - self.progress_start_time).total_seconds()
+        
+        # Calcula o progresso (0.0 a 1.0)
+        if self.estimated_total_seconds > 0:
+            progress = min(elapsed_seconds / self.estimated_total_seconds, 0.99)  # Máximo 99% até completar
+        else:
+            progress = 0.0
+        
+        # Atualiza a barra
+        self.progress_bar.set(progress)
+        
+        # Agenda a próxima atualização (a cada segundo)
+        if self.is_processing:
+            self.progress_timer_id = self.root.after(1000, self._update_progress_by_time)
 
     def start_transcription(self):
         if self.is_processing:
@@ -458,11 +468,29 @@ class TranscriptionApp:
             )
             return
 
+        # Calcula o tempo estimado de transcrição
+        duration_minutes = self.get_audio_duration(self.filepath)
+        if duration_minutes is None:
+            self.status_label.configure(
+                text="⚠️ Não foi possível calcular a duração do áudio",
+                text_color="orange"
+            )
+            return
+        
+        # Calcula tempo estimado: 1 min de áudio = 5 seg de transcrição + 20% de margem
+        estimated_transcription_seconds = duration_minutes * 5
+        self.estimated_total_seconds = estimated_transcription_seconds * 1.2  # Adiciona 20% de margem
+        
         # Prepara a UI para processamento
         self.is_processing = True
         self.transcribe_button.configure(state="disabled", text="⏳ Processando...")
         self.import_button.configure(state="disabled")
-        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 15))
+        self.progress_bar.set(0)  # Inicia em 0
+        
+        # Inicia o temporizador de progresso
+        self.progress_start_time = datetime.datetime.now()
+        self._update_progress_by_time()  # Inicia a atualização
         
         # Verifica o tamanho do arquivo
         file_size = os.path.getsize(self.filepath)
@@ -478,10 +506,6 @@ class TranscriptionApp:
                 text="🔄 Transcrevendo áudio...",
                 text_color="cyan"
             )
-        
-        # Inicia animação de progresso em thread separada
-        progress_thread = threading.Thread(target=self.animate_progress, daemon=True)
-        progress_thread.start()
         
         # Executa transcrição em thread separada para não travar a UI
         transcription_thread = threading.Thread(target=self._transcribe_async, daemon=True)
@@ -537,8 +561,18 @@ class TranscriptionApp:
 
     def _transcription_complete(self, transcription, error):
         """Callback chamado quando a transcrição termina"""
+        # Para o temporizador de progresso
+        if self.progress_timer_id is not None:
+            self.root.after_cancel(self.progress_timer_id)
+            self.progress_timer_id = None
+        
         self.is_processing = False
+        self.progress_start_time = None
+        self.estimated_total_seconds = None
+        
+        # Esconde a barra de progresso imediatamente
         self.progress_bar.pack_forget()
+        
         self.transcribe_button.configure(state="normal", text="▶️ Iniciar Transcrição")
         self.import_button.configure(state="normal")
         
