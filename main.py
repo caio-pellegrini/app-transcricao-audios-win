@@ -29,7 +29,7 @@ class TranscriptionApp:
         self.api = WhisperAPI()  # Para acessar informações de custo
         self.filepath = ""
         self.is_processing = False
-        self.selected_model = "gpt-4o-mini-transcribe"  # Modelo padrão (mais barato)
+        self.selected_model = "whisper-1"  # Modelo padrão
         self.use_diarization = False
 
         # Container principal
@@ -75,7 +75,16 @@ class TranscriptionApp:
             text_color="#4CAF50",
             anchor="w"
         )
-        self.estimated_cost_label.pack(fill="x", padx=15, pady=(0, 10))
+        self.estimated_cost_label.pack(fill="x", padx=15, pady=(0, 5))
+
+        self.estimated_time_label = CTkLabel(
+            self.file_info_frame,
+            text="",
+            font=("Arial", 10),
+            text_color="gray",
+            anchor="w"
+        )
+        self.estimated_time_label.pack(fill="x", padx=15, pady=(0, 10))
 
         # Frame de configurações (modelo e diarização)
         self.settings_frame = CTkFrame(self.main_frame)
@@ -102,7 +111,7 @@ class TranscriptionApp:
             font=("Arial", 11),
             width=200
         )
-        self.model_combo.set("gpt-4o-mini-transcribe")
+        self.model_combo.set("whisper-1")
         self.model_combo.pack(side="left", padx=5, pady=10)
 
         # Label para mostrar o custo do modelo
@@ -271,36 +280,74 @@ class TranscriptionApp:
         """Atualiza o label com o custo estimado"""
         if not self.filepath:
             self.estimated_cost_label.configure(text="")
+            self.estimated_time_label.configure(text="")
             return
+        
+        # Obtém o tamanho do arquivo
+        file_size = os.path.getsize(self.filepath)
+        file_size_str = self.format_file_size(file_size)
         
         duration_minutes = self.get_audio_duration(self.filepath)
         if duration_minutes is None:
-            self.estimated_cost_label.configure(
-                text="⚠️ Não foi possível calcular a duração do áudio",
+            self.file_size_label.configure(
+                text=f"Tamanho: {file_size_str} | ⚠️ Não foi possível calcular a duração do áudio",
                 text_color="orange"
             )
-            return
-        
-        estimated_cost = self.calculate_estimated_cost(duration_minutes, self.selected_model)
-        if estimated_cost is None:
             self.estimated_cost_label.configure(text="")
+            self.estimated_time_label.configure(text="")
             return
         
-        # Formata a duração
+        # Formata a duração do áudio
         if duration_minutes < 1:
             duration_str = f"{duration_minutes * 60:.1f} segundos"
         else:
             duration_str = f"{duration_minutes:.2f} minutos"
         
+        # Atualiza o label com tamanho e duração na mesma linha
+        self.file_size_label.configure(
+            text=f"Tamanho: {file_size_str} | Duração: {duration_str}",
+            text_color="gray"
+        )
+        
+        estimated_cost = self.calculate_estimated_cost(duration_minutes, self.selected_model)
+        if estimated_cost is None:
+            self.estimated_cost_label.configure(text="")
+            self.estimated_time_label.configure(text="")
+            return
+        
         # Formata o custo: 2 casas decimais normalmente, mais casas apenas se < 0.01
         if estimated_cost < 0.01:
-            cost_str = f"${estimated_cost:.3f}"
+            cost_str_usd = f"${estimated_cost:.3f}"
         else:
-            cost_str = f"${estimated_cost:.2f}"
+            cost_str_usd = f"${estimated_cost:.2f}"
+        
+        # Calcula o custo em reais (1 USD = 5 BRL)
+        cost_brl = estimated_cost * 5
+        if cost_brl < 0.01:
+            cost_str_brl = f"R$ {cost_brl:.3f}"
+        else:
+            cost_str_brl = f"R$ {cost_brl:.2f}"
         
         self.estimated_cost_label.configure(
-            text=f"💰 Custo estimado: {cost_str} ({duration_str})",
+            text=f"💰 Custo estimado: {cost_str_usd} ({cost_str_brl})",
             text_color="#4CAF50"
+        )
+        
+        # Calcula o tempo estimado de transcrição (1 min de áudio = 5 seg de transcrição)
+        estimated_transcription_seconds = int(duration_minutes * 5)
+        if estimated_transcription_seconds < 60:
+            time_str = f"{estimated_transcription_seconds} segundos"
+        else:
+            minutes = estimated_transcription_seconds // 60
+            seconds = estimated_transcription_seconds % 60
+            if seconds == 0:
+                time_str = f"{minutes} min"
+            else:
+                time_str = f"{minutes} min e {seconds} seg"
+        
+        self.estimated_time_label.configure(
+            text=f"⏳ Tempo estimado para transcrição: {time_str}",
+            text_color="gray"
         )
 
     def import_file(self):
@@ -317,13 +364,10 @@ class TranscriptionApp:
         
         if self.filepath:
             filename = os.path.basename(self.filepath)
-            file_size = os.path.getsize(self.filepath)
-            file_size_str = self.format_file_size(file_size)
             
             self.file_label.configure(text=f"📁 {filename}")
-            self.file_size_label.configure(text=f"Tamanho: {file_size_str}")
             
-            # Atualiza o custo estimado
+            # Atualiza o custo estimado (que também atualiza o tamanho e duração)
             self.update_estimated_cost_label()
             
             # Limpa a transcrição anterior
@@ -540,12 +584,13 @@ class TranscriptionApp:
         self.file_label.configure(text="📁 Nenhum arquivo selecionado")
         self.file_size_label.configure(text="")
         self.estimated_cost_label.configure(text="")
+        self.estimated_time_label.configure(text="")
         self.text_area.delete("1.0", tk.END)
         self.status_label.configure(text="")
         self.progress_bar.pack_forget()
         # Reseta modelo para padrão
-        self.selected_model = "gpt-4o-mini-transcribe"
-        self.model_combo.set("gpt-4o-mini-transcribe")
+        self.selected_model = "whisper-1"
+        self.model_combo.set("whisper-1")
         self.use_diarization = False
         self.diarization_checkbox.deselect()
         self.diarization_checkbox.configure(state="normal")

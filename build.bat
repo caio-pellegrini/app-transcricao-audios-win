@@ -12,3 +12,4 @@ echo Executavel gerado em: dist\AppTranscricao.exe
 echo ========================================
 pause
 
+
