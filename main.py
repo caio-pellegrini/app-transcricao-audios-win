@@ -19,11 +19,17 @@ class TranscriptionApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Transcritor de Áudio")
-        self.root.geometry("900x700")
         
         # Configura tema moderno
         set_appearance_mode("dark")
         set_default_color_theme("blue")
+        
+        # Maximiza a janela por padrão
+        # Aguarda a janela ser criada antes de maximizar
+        self.root.update_idletasks()
+        # Tenta maximizar imediatamente e também após um pequeno delay
+        self._maximize_window()
+        self.root.after(50, self._maximize_window)
         
         self.transcriber = Transcriber()
         self.api = WhisperAPI()  # Para acessar informações de custo
@@ -32,75 +38,92 @@ class TranscriptionApp:
         self.selected_model = "whisper-1"  # Modelo padrão
         self.use_diarization = False
 
-        # Container principal
+        # Container principal - usa grid para permitir proporções exatas
         self.main_frame = CTkFrame(root)
-        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        self.main_frame.pack(fill="both", expand=True, padx=25, pady=25)
+        
+        # Configura grid para proporções 40/60
+        self.main_frame.grid_columnconfigure(0, weight=2, uniform="cols")  # 40% (2/5)
+        self.main_frame.grid_columnconfigure(1, weight=3, uniform="cols")  # 60% (3/5)
+        self.main_frame.grid_rowconfigure(0, weight=1)
 
-        # Cabeçalho
-        self.header_frame = CTkFrame(self.main_frame)
+        # Coluna esquerda (40%)
+        self.left_frame = CTkFrame(self.main_frame)
+        self.left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 10), pady=0)
+
+        # Coluna direita (60%)
+        self.right_frame = CTkFrame(self.main_frame)
+        self.right_frame.grid(row=0, column=1, sticky="nsew", padx=(10, 0), pady=0)
+
+        # Cabeçalho (esquerda)
+        self.header_frame = CTkFrame(self.left_frame)
         self.header_frame.pack(fill="x", pady=(0, 20))
 
         self.title_label = CTkLabel(
             self.header_frame, 
             text="🎤 Transcritor de Áudio", 
-            font=("Arial", 24, "bold")
+            font=("Arial", 22, "bold")
         )
-        self.title_label.pack(pady=10)
+        self.title_label.pack(pady=15)
 
-        # Área de informações do arquivo
-        self.file_info_frame = CTkFrame(self.main_frame)
-        self.file_info_frame.pack(fill="x", pady=(0, 15))
+        # Área de informações do arquivo (esquerda)
+        self.file_info_frame = CTkFrame(self.left_frame)
+        self.file_info_frame.pack(fill="x", pady=(0, 20))
 
         self.file_label = CTkLabel(
             self.file_info_frame, 
             text="📁 Nenhum arquivo selecionado",
-            font=("Arial", 12),
+            font=("Arial", 13),
             anchor="w"
         )
-        self.file_label.pack(fill="x", padx=15, pady=10)
+        self.file_label.pack(fill="x", padx=20, pady=(15, 8))
 
         self.file_size_label = CTkLabel(
             self.file_info_frame,
             text="",
-            font=("Arial", 10),
+            font=("Arial", 11),
             text_color="gray",
             anchor="w"
         )
-        self.file_size_label.pack(fill="x", padx=15, pady=(0, 5))
+        self.file_size_label.pack(fill="x", padx=20, pady=(0, 8))
 
         self.estimated_cost_label = CTkLabel(
             self.file_info_frame,
             text="",
-            font=("Arial", 10),
+            font=("Arial", 11),
             text_color="#4CAF50",
             anchor="w"
         )
-        self.estimated_cost_label.pack(fill="x", padx=15, pady=(0, 5))
+        self.estimated_cost_label.pack(fill="x", padx=20, pady=(0, 8))
 
         self.estimated_time_label = CTkLabel(
             self.file_info_frame,
             text="",
-            font=("Arial", 10),
+            font=("Arial", 11),
             text_color="gray",
             anchor="w"
         )
-        self.estimated_time_label.pack(fill="x", padx=15, pady=(0, 10))
+        self.estimated_time_label.pack(fill="x", padx=20, pady=(0, 15))
 
-        # Frame de configurações (modelo e diarização)
-        self.settings_frame = CTkFrame(self.main_frame)
-        self.settings_frame.pack(fill="x", pady=(0, 15))
+        # Frame de configurações (modelo e diarização) (esquerda)
+        self.settings_frame = CTkFrame(self.left_frame)
+        self.settings_frame.pack(fill="x", pady=(0, 20))
+
+        # Container para modelo e custo (linha superior)
+        self.model_row = CTkFrame(self.settings_frame)
+        self.model_row.pack(fill="x", padx=15, pady=(15, 10))
 
         # Label e ComboBox para seleção de modelo
         self.model_label = CTkLabel(
-            self.settings_frame,
+            self.model_row,
             text="Modelo:",
-            font=("Arial", 12),
+            font=("Arial", 13, "bold"),
             anchor="w"
         )
-        self.model_label.pack(side="left", padx=(15, 5), pady=10)
+        self.model_label.pack(side="left", padx=(0, 10))
 
         self.model_combo = CTkComboBox(
-            self.settings_frame,
+            self.model_row,
             values=[
                 "gpt-4o-mini-transcribe",
                 "gpt-4o-transcribe",
@@ -108,144 +131,174 @@ class TranscriptionApp:
                 "whisper-1"
             ],
             command=self._on_model_change,
-            font=("Arial", 11),
-            width=200
+            font=("Arial", 12),
+            width=220,
+            height=35
         )
         self.model_combo.set("whisper-1")
-        self.model_combo.pack(side="left", padx=5, pady=10)
+        self.model_combo.pack(side="left", padx=(0, 15), fill="x", expand=True)
 
         # Label para mostrar o custo do modelo
         self.cost_label = CTkLabel(
-            self.settings_frame,
+            self.model_row,
             text="",
-            font=("Arial", 10),
+            font=("Arial", 11),
             text_color="gray",
             anchor="w"
         )
-        self.cost_label.pack(side="left", padx=(10, 0), pady=10)
+        self.cost_label.pack(side="left", padx=(10, 0))
         self._update_cost_label()  # Atualiza com o custo inicial
 
-        # Checkbox para diarização
+        # Checkbox para diarização (linha inferior)
         self.diarization_checkbox = CTkCheckBox(
             self.settings_frame,
             text="Usar Diarização (identificar falantes)",
             command=self._on_diarization_change,
-            font=("Arial", 11)
+            font=("Arial", 12)
         )
-        self.diarization_checkbox.pack(side="left", padx=(20, 15), pady=10)
+        self.diarization_checkbox.pack(side="left", padx=(20, 15), pady=(0, 15))
 
-        # Frame de botões
-        self.button_frame = CTkFrame(self.main_frame)
-        self.button_frame.pack(fill="x", pady=(0, 15))
+        # Frame de botões (esquerda)
+        self.button_frame = CTkFrame(self.left_frame)
+        self.button_frame.pack(fill="x", pady=(0, 20))
 
         self.import_button = CTkButton(
             self.button_frame,
             text="📂 Selecionar Arquivo",
             command=self.import_file,
-            font=("Arial", 14),
-            height=40,
-            corner_radius=10
+            font=("Arial", 15),
+            height=50,
+            corner_radius=12
         )
-        self.import_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.import_button.pack(fill="x", padx=10, pady=(10, 8))
 
         self.transcribe_button = CTkButton(
             self.button_frame,
             text="▶️ Iniciar Transcrição",
             command=self.start_transcription,
-            font=("Arial", 14, "bold"),
-            height=40,
-            corner_radius=10,
+            font=("Arial", 15, "bold"),
+            height=50,
+            corner_radius=12,
             fg_color="#1f8a4f",
             hover_color="#166d3d"
         )
-        self.transcribe_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.transcribe_button.pack(fill="x", padx=10, pady=(0, 10))
 
-        # Área de status e progresso
-        self.status_frame = CTkFrame(self.main_frame)
-        self.status_frame.pack(fill="x", pady=(0, 15))
+        # Área de status e progresso (esquerda) - expande para ocupar espaço restante
+        self.status_frame = CTkFrame(self.left_frame)
+        self.status_frame.pack(fill="both", expand=True, pady=(0, 0))
 
         self.status_label = CTkLabel(
             self.status_frame,
             text="",
-            font=("Arial", 12),
+            font=("Arial", 13),
             anchor="w"
         )
-        self.status_label.pack(fill="x", padx=15, pady=(10, 5))
+        self.status_label.pack(fill="x", padx=20, pady=(15, 10))
 
         self.progress_bar = CTkProgressBar(self.status_frame)
-        self.progress_bar.pack(fill="x", padx=15, pady=(0, 10))
+        self.progress_bar.pack(fill="x", padx=20, pady=(0, 15))
         self.progress_bar.set(0)
         self.progress_bar.pack_forget()  # Esconde inicialmente
 
-        # Área de transcrição
-        self.text_frame = CTkFrame(self.main_frame)
-        self.text_frame.pack(fill="both", expand=True, pady=(0, 15))
+        # Área de transcrição (direita)
+        self.text_frame = CTkFrame(self.right_frame)
+        self.text_frame.pack(fill="both", expand=True, pady=(0, 20))
 
         self.text_label = CTkLabel(
             self.text_frame,
             text="📝 Transcrição:",
-            font=("Arial", 14, "bold"),
+            font=("Arial", 16, "bold"),
             anchor="w"
         )
-        self.text_label.pack(fill="x", padx=15, pady=(10, 5))
+        self.text_label.pack(fill="x", padx=20, pady=(15, 10))
 
         self.text_area = CTkTextbox(
             self.text_frame,
-            font=("Arial", 12),
+            font=("Arial", 13),
             wrap="word",
-            corner_radius=10
+            corner_radius=12
         )
-        self.text_area.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.text_area.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        # Frame de ações
-        self.action_frame = CTkFrame(self.main_frame)
-        self.action_frame.pack(fill="x")
+        # Frame de ações (direita)
+        self.action_frame = CTkFrame(self.right_frame)
+        self.action_frame.pack(fill="x", pady=(0, 0))
+
+        # Primeira linha de botões
+        self.action_row1 = CTkFrame(self.action_frame)
+        self.action_row1.pack(fill="x", padx=10, pady=(0, 10))
 
         self.copy_button = CTkButton(
-            self.action_frame,
+            self.action_row1,
             text="📋 Copiar",
             command=self.copy_transcription,
-            font=("Arial", 12),
-            height=35,
-            corner_radius=8,
+            font=("Arial", 13),
+            height=45,
+            corner_radius=10,
             fg_color="#2b5aa0",
             hover_color="#1e3f6f"
         )
-        self.copy_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.copy_button.pack(side="left", padx=(0, 8), fill="x", expand=True)
 
         self.save_button = CTkButton(
-            self.action_frame,
+            self.action_row1,
             text="💾 Salvar como Word",
             command=self.save_transcription_to_word,
-            font=("Arial", 12),
-            height=35,
-            corner_radius=8,
+            font=("Arial", 13),
+            height=45,
+            corner_radius=10,
             fg_color="#2d7a4d",
             hover_color="#1f5634"
         )
-        self.save_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.save_button.pack(side="left", padx=(0, 8), fill="x", expand=True)
+
+        # Segunda linha de botões
+        self.action_row2 = CTkFrame(self.action_frame)
+        self.action_row2.pack(fill="x", padx=10, pady=(0, 10))
 
         self.clear_button = CTkButton(
-            self.action_frame,
+            self.action_row2,
             text="🗑️ Limpar",
             command=self.clear_text,
-            font=("Arial", 12),
-            height=35,
-            corner_radius=8,
+            font=("Arial", 13),
+            height=45,
+            corner_radius=10,
             fg_color="#8b2a2a",
             hover_color="#6b1f1f"
         )
-        self.clear_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.clear_button.pack(side="left", padx=(0, 8), fill="x", expand=True)
 
         self.reset_button = CTkButton(
-            self.action_frame,
+            self.action_row2,
             text="🔄 Novo Arquivo",
             command=self.reset,
-            font=("Arial", 12),
-            height=35,
-            corner_radius=8
+            font=("Arial", 13),
+            height=45,
+            corner_radius=10
         )
-        self.reset_button.pack(side="left", padx=5, fill="x", expand=True)
+        self.reset_button.pack(side="left", padx=(0, 8), fill="x", expand=True)
+
+    def _maximize_window(self):
+        """Maximiza a janela de forma compatível com Windows"""
+        try:
+            # No Windows, usa state('zoomed')
+            self.root.state('zoomed')
+        except Exception as e:
+            try:
+                # Tenta usando wm_state (alternativa)
+                self.root.wm_state('zoomed')
+            except:
+                try:
+                    # Fallback: define geometria para ocupar toda a tela
+                    # Remove a barra de título e bordas do cálculo
+                    screen_width = self.root.winfo_screenwidth()
+                    screen_height = self.root.winfo_screenheight()
+                    # Usa a geometria completa da tela
+                    self.root.geometry(f"{screen_width}x{screen_height}+0+0")
+                except:
+                    # Último fallback: tamanho grande padrão
+                    self.root.geometry("1400x900")
 
     def format_file_size(self, size_bytes):
         """Formata o tamanho do arquivo em formato legível"""
@@ -598,4 +651,6 @@ class TranscriptionApp:
 if __name__ == "__main__":
     root = CTk()
     app = TranscriptionApp(root)
+    # Garante que a janela seja maximizada após tudo ser criado
+    root.update()
     root.mainloop()
