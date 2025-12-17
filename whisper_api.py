@@ -2,11 +2,31 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 
+# Tenta carregar do .env (para desenvolvimento)
+# Se não existir, não é problema - vamos usar variáveis de ambiente do sistema
 load_dotenv()
 
 class WhisperAPI:
     def __init__(self):
-        self.api_key = os.getenv('API_KEY')
+        # Tenta obter a API_KEY de várias fontes:
+        # 1. Variável de ambiente OPENAI_API_KEY (padrão da OpenAI)
+        # 2. Variável de ambiente API_KEY (do .env)
+        # 3. Variável de ambiente do sistema
+        self.api_key = os.getenv('OPENAI_API_KEY') or os.getenv('API_KEY')
+        
+        if not self.api_key:
+            raise ValueError(
+                "API_KEY não configurada!\n\n"
+                "Por favor, configure a chave da API OpenAI de uma das seguintes formas:\n\n"
+                "1. Variável de ambiente do sistema:\n"
+                "   - Windows (PowerShell): $env:OPENAI_API_KEY='sua-chave-aqui'\n"
+                "   - Windows (CMD): set OPENAI_API_KEY=sua-chave-aqui\n"
+                "   - Linux/Mac: export OPENAI_API_KEY='sua-chave-aqui'\n\n"
+                "2. Arquivo .env na mesma pasta do executável:\n"
+                "   Crie um arquivo chamado '.env' com: OPENAI_API_KEY=sua-chave-aqui\n\n"
+                "3. Ou use: API_KEY=sua-chave-aqui (alternativa)"
+            )
+        
         self.client = OpenAI(api_key=self.api_key)
         self.MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB em bytes
         

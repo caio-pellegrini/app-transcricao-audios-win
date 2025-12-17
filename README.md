@@ -47,10 +47,14 @@ Este é um projeto de transcrição de áudio que utiliza a API Whisper da OpenA
     - Crie um arquivo `.env` no diretório raiz do projeto e adicione sua chave de API:
     
       ```plaintext
+      OPENAI_API_KEY=sua-api-key-aqui
+      ```
+      ou
+      ```plaintext
       API_KEY=sua-api-key-aqui
       ```
 
-    - **OU**: Configure a variável de ambiente `API_KEY` diretamente no seu sistema.
+    - **OU**: Configure a variável de ambiente `OPENAI_API_KEY` ou `API_KEY` diretamente no seu sistema.
 
 5. **Instale o `ffmpeg`**:
 
@@ -128,11 +132,44 @@ pyinstaller --name=AppTranscricao --onefile --windowed --icon=icon.ico main.py
 
 O executável será gerado na pasta `dist\AppTranscricao.exe` (Windows) ou `dist/AppTranscricao` (Linux/macOS).
 
+### Configuração da API_KEY no Executável
+
+**IMPORTANTE**: O arquivo `.env` NÃO é incluído no executável por questões de segurança. Ao distribuir o executável, os usuários precisam configurar a API_KEY manualmente.
+
+#### Opção 1: Variável de Ambiente do Sistema (Recomendado)
+
+**Windows (PowerShell):**
+```powershell
+$env:OPENAI_API_KEY='sua-chave-aqui'
+```
+
+**Windows (CMD):**
+```cmd
+set OPENAI_API_KEY=sua-chave-aqui
+```
+
+**Linux/macOS:**
+```bash
+export OPENAI_API_KEY='sua-chave-aqui'
+```
+
+Para tornar permanente no Windows:
+1. Abra "Variáveis de Ambiente" nas Configurações do Sistema
+2. Adicione uma nova variável de ambiente `OPENAI_API_KEY` com sua chave
+
+#### Opção 2: Arquivo .env na mesma pasta do executável
+
+Crie um arquivo chamado `.env` na mesma pasta onde está o `AppTranscricao.exe` com:
+```
+OPENAI_API_KEY=sua-chave-aqui
+```
+
 ### Notas Importantes
 
 - **Não mova o ambiente virtual**: Se você mover o projeto para outra pasta, será necessário recriar o ambiente virtual (`python -m venv env`).
 - **Tamanho do executável**: O executável pode ser grande (50-100MB+) pois inclui todas as dependências do Python.
 - **Distribuição**: Ao distribuir o executável, certifique-se de que os usuários tenham o `ffmpeg` instalado se forem processar arquivos de áudio em formatos específicos.
+- **API_KEY**: O executável NÃO inclui a API_KEY. Os usuários devem configurá-la manualmente usando uma das opções acima.
 
 ## Contribuição
 

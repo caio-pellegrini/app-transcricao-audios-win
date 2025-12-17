@@ -32,8 +32,16 @@ class TranscriptionApp:
         self._maximize_window()
         self.root.after(50, self._maximize_window)
         
-        self.transcriber = Transcriber()
-        self.api = WhisperAPI()  # Para acessar informações de custo
+        # Tenta inicializar a API - se falhar, mostra mensagem amigável
+        try:
+            self.transcriber = Transcriber()
+            self.api = WhisperAPI()  # Para acessar informações de custo
+        except ValueError as e:
+            # Se a API_KEY não estiver configurada, mostra mensagem na interface
+            self._show_api_key_error(str(e))
+            # Define como None para evitar erros posteriores
+            self.transcriber = None
+            self.api = None
         self.filepath = ""
         self.is_processing = False
         self.selected_model = "whisper-1"  # Modelo padrão
@@ -303,6 +311,28 @@ class TranscriptionApp:
                 except:
                     # Último fallback: tamanho grande padrão
                     self.root.geometry("1400x900")
+    
+    def _show_api_key_error(self, error_message):
+        """Mostra mensagem de erro quando a API_KEY não está configurada"""
+        # Limpa a área de texto e mostra a mensagem de erro
+        self.text_area.delete("1.0", tk.END)
+        self.text_area.insert("1.0", error_message)
+        
+        # Atualiza o status
+        self.status_label.configure(
+            text="❌ API_KEY não configurada",
+            text_color="red"
+        )
+        
+        # Desabilita botões que requerem a API
+        self.transcribe_button.configure(state="disabled")
+        self.import_button.configure(state="disabled")
+        
+        # Atualiza o label do arquivo
+        self.file_label.configure(
+            text="⚠️ Configure a API_KEY antes de usar",
+            text_color="orange"
+        )
 
     def format_file_size(self, size_bytes):
         """Formata o tamanho do arquivo em formato legível"""
@@ -325,7 +355,7 @@ class TranscriptionApp:
     
     def calculate_estimated_cost(self, duration_minutes, model):
         """Calcula o custo estimado da transcrição"""
-        if duration_minutes is None:
+        if duration_minutes is None or self.api is None:
             return None
         cost_per_minute = self.api.get_model_cost(model)
         # O custo mínimo é sempre de 1 minuto, mesmo que o áudio seja menor
@@ -460,6 +490,13 @@ class TranscriptionApp:
     def start_transcription(self):
         if self.is_processing:
             return
+        
+        if self.transcriber is None or self.api is None:
+            self.status_label.configure(
+                text="❌ API_KEY não configurada. Configure antes de transcrever.",
+                text_color="red"
+            )
+            return
             
         if not self.filepath:
             self.status_label.configure(
@@ -513,6 +550,9 @@ class TranscriptionApp:
 
     def _update_cost_label(self):
         """Atualiza o label com o custo do modelo selecionado"""
+        if self.api is None:
+            self.cost_label.configure(text="API não configurada")
+            return
         cost = self.api.get_model_cost(self.selected_model)
         cost_text = f"Custo: ${cost:.3f} / minuto"
         self.cost_label.configure(text=cost_text)
