@@ -117,6 +117,19 @@ class TranscriptionApp:
         )
         self.estimated_time_label.pack(fill="x", padx=20, pady=(0, 15))
 
+        # Label de loading para quando está carregando informações do arquivo
+        self.loading_label = CTkLabel(
+            self.file_info_frame,
+            text="",
+            font=("Arial", 11),
+            text_color="cyan",
+            anchor="w"
+        )
+        self.loading_label.pack(fill="x", padx=20, pady=(0, 0))
+        self.loading_label.pack_forget()  # Esconde inicialmente
+        self.is_loading_file = False
+        self.loading_animation_id = None
+
         # Frame de configurações (modelo e diarização) (esquerda)
         self.settings_frame = CTkFrame(self.left_frame)
         self.settings_frame.pack(fill="x", pady=(0, 20))
@@ -364,25 +377,150 @@ class TranscriptionApp:
         return estimated_cost
     
     def update_estimated_cost_label(self):
-        """Atualiza o label com o custo estimado"""
+        """Atualiza o label com o custo estimado (usado quando o modelo muda)"""
         if not self.filepath:
             self.estimated_cost_label.configure(text="")
             self.estimated_time_label.configure(text="")
             return
         
-        # Obtém o tamanho do arquivo
-        file_size = os.path.getsize(self.filepath)
-        file_size_str = self.format_file_size(file_size)
+        # Se já temos a duração carregada (não está carregando), atualiza diretamente
+        # Caso contrário, a atualização será feita quando o carregamento terminar
+        if not self.is_loading_file:
+            # Obtém a duração do áudio (pode ser lento, mas já está carregado)
+            duration_minutes = self.get_audio_duration(self.filepath)
+            if duration_minutes is not None:
+                self._update_cost_labels_with_duration(duration_minutes)
+            else:
+                # Se não conseguir obter a duração, limpa os labels
+                self.estimated_cost_label.configure(text="")
+                self.estimated_time_label.configure(text="")
+
+    def import_file(self):
+        if self.is_processing or self.is_loading_file:
+            return
         
-        duration_minutes = self.get_audio_duration(self.filepath)
-        if duration_minutes is None:
+        self.filepath = filedialog.askopenfilename(
+            title="Selecione um arquivo de áudio",
+            filetypes=[
+                ("Arquivos de Áudio", "*.mp3 *.mp4 *.mpeg *.mpga *.m4a *.wav *.webm"),
+                ("Todos os arquivos", "*.*")
+            ]
+        )
+        
+        if self.filepath:
+            filename = os.path.basename(self.filepath)
+            
+            self.file_label.configure(text=f"📁 {filename}")
+            
+            # Limpa informações anteriores
+            self.file_size_label.configure(text="")
+            self.estimated_cost_label.configure(text="")
+            self.estimated_time_label.configure(text="")
+            
+            # Limpa a transcrição anterior
+            self.text_area.delete("1.0", tk.END)
+            self.status_label.configure(text="")
+            
+            # Inicia o carregamento assíncrono
+            self._start_file_loading()
+
+    def _start_file_loading(self):
+        """Inicia o carregamento do arquivo em uma thread separada"""
+        self.is_loading_file = True
+        
+        # Mostra o label de loading
+        self.loading_label.pack(fill="x", padx=20, pady=(0, 8))
+        self._animate_loading()
+        
+        # Desabilita o botão de importar enquanto carrega
+        self.import_button.configure(state="disabled")
+        
+        # Inicia o carregamento em thread separada
+        loading_thread = threading.Thread(target=self._load_file_async, daemon=True)
+        loading_thread.start()
+    
+    def _animate_loading(self):
+        """Anima o texto de loading"""
+        if not self.is_loading_file:
+            return
+        
+        dots = ["", ".", "..", "..."]
+        if self.loading_animation_id is None:
+            self.loading_animation_id = 0
+        else:
+            self.loading_animation_id = (self.loading_animation_id + 1) % len(dots)
+        
+        current_dots = dots[self.loading_animation_id]
+        self.loading_label.configure(text=f"⏳ Carregando informações do arquivo{current_dots}")
+        
+        if self.is_loading_file:
+            self.root.after(500, self._animate_loading)
+    
+    def _load_file_async(self):
+        """Carrega as informações do arquivo em thread separada"""
+        try:
+            # Obtém o tamanho do arquivo (rápido)
+            file_size = os.path.getsize(self.filepath)
+            file_size_str = self.format_file_size(file_size)
+            
+            # Obtém a duração do áudio (pode demorar)
+            duration_minutes = self.get_audio_duration(self.filepath)
+            
+            # Atualiza a UI na thread principal
+            self.root.after(0, self._file_loading_complete, file_size_str, duration_minutes)
+        except Exception as e:
+            self.root.after(0, self._file_loading_error, str(e))
+    
+    def _file_loading_complete(self, file_size_str, duration_minutes):
+        """Callback quando o carregamento do arquivo termina"""
+        self.is_loading_file = False
+        self.loading_animation_id = None
+        
+        # Esconde o label de loading
+        self.loading_label.pack_forget()
+        
+        # Habilita o botão de importar
+        self.import_button.configure(state="normal")
+        
+        # Atualiza as informações do arquivo
+        self.file_size_label.configure(text=f"Tamanho: {file_size_str}")
+        
+        if duration_minutes is not None:
+            # Atualiza o custo estimado com a duração obtida
+            self._update_cost_labels_with_duration(duration_minutes)
+        else:
             self.file_size_label.configure(
-                text=f"Tamanho: {file_size_str} | ⚠️ Não foi possível calcular a duração do áudio",
+                text=f"Tamanho: {file_size_str} | ⚠️ Não foi possível calcular a duração",
                 text_color="orange"
             )
             self.estimated_cost_label.configure(text="")
             self.estimated_time_label.configure(text="")
+    
+    def _file_loading_error(self, error_message):
+        """Callback quando há erro ao carregar o arquivo"""
+        self.is_loading_file = False
+        self.loading_animation_id = None
+        
+        # Esconde o label de loading
+        self.loading_label.pack_forget()
+        
+        # Habilita o botão de importar
+        self.import_button.configure(state="normal")
+        
+        # Mostra mensagem de erro
+        self.status_label.configure(
+            text=f"❌ Erro ao carregar arquivo: {error_message}",
+            text_color="red"
+        )
+    
+    def _update_cost_labels_with_duration(self, duration_minutes):
+        """Atualiza os labels de custo e tempo com a duração fornecida"""
+        if not self.filepath or self.api is None:
             return
+        
+        # Obtém o tamanho do arquivo
+        file_size = os.path.getsize(self.filepath)
+        file_size_str = self.format_file_size(file_size)
         
         # Formata a duração do áudio
         if duration_minutes < 1:
@@ -390,7 +528,7 @@ class TranscriptionApp:
         else:
             duration_str = f"{duration_minutes:.2f} minutos"
         
-        # Atualiza o label com tamanho e duração na mesma linha
+        # Atualiza o label com tamanho e duração
         self.file_size_label.configure(
             text=f"Tamanho: {file_size_str} | Duração: {duration_str}",
             text_color="gray"
@@ -436,30 +574,6 @@ class TranscriptionApp:
             text=f"⏳ Tempo estimado para transcrição: {time_str}",
             text_color="gray"
         )
-
-    def import_file(self):
-        if self.is_processing:
-            return
-        
-        self.filepath = filedialog.askopenfilename(
-            title="Selecione um arquivo de áudio",
-            filetypes=[
-                ("Arquivos de Áudio", "*.mp3 *.mp4 *.mpeg *.mpga *.m4a *.wav *.webm"),
-                ("Todos os arquivos", "*.*")
-            ]
-        )
-        
-        if self.filepath:
-            filename = os.path.basename(self.filepath)
-            
-            self.file_label.configure(text=f"📁 {filename}")
-            
-            # Atualiza o custo estimado (que também atualiza o tamanho e duração)
-            self.update_estimated_cost_label()
-            
-            # Limpa a transcrição anterior
-            self.text_area.delete("1.0", tk.END)
-            self.status_label.configure(text="")
 
     def update_progress(self, value):
         """Atualiza a barra de progresso"""
